@@ -171,35 +171,50 @@ _meta_path: str = DEFAULT_META_PATH
 _model_name_map: dict[int, str] | None = None
 
 
+_registration_order_names: list[str] = []
+
+
+def _build_expected_names(num_layers: int = 64) -> list[str]:
+    """Build the expected module name list matching SGLang's registration order.
+
+    SGLang iterates model.named_modules() which yields modules in definition
+    order. This must match the model architecture exactly. For Qwen3.5 with
+    hybrid GDN/Mamba attention, each layer has these sub-modules in order.
+    """
+    names = []
+    for i in range(num_layers):
+        prefix = f"model.layers.{i}"
+        names.extend([
+            prefix,
+            f"{prefix}.linear_attn",
+            f"{prefix}.linear_attn.conv1d",
+            f"{prefix}.linear_attn.in_proj_qkv",
+            f"{prefix}.linear_attn.in_proj_z",
+            f"{prefix}.linear_attn.in_proj_b",
+            f"{prefix}.linear_attn.in_proj_a",
+            f"{prefix}.linear_attn.attn",
+            f"{prefix}.linear_attn.norm",
+            f"{prefix}.linear_attn.out_proj",
+            f"{prefix}.mlp",
+            f"{prefix}.mlp.gate_up_proj",
+            f"{prefix}.mlp.down_proj",
+            f"{prefix}.mlp.act_fn",
+            f"{prefix}.input_layernorm",
+            f"{prefix}.post_attention_layernorm",
+        ])
+    return names
+
+
 def _build_name_map(module: nn.Module) -> dict[int, str]:
-    """Walk the full model tree once to map id(module) → qualified name."""
-    root = module
-    while hasattr(root, "_modules") and hasattr(root, "_get_name"):
-        parent = getattr(root, "_parent", None)
-        if parent is None:
-            break
-        root = parent
-
-    result: dict[int, str] = {}
-    try:
-        for name, mod in root.named_modules():
-            result[id(mod)] = name
-    except Exception:
-        pass
-    return result
+    """Not used — name resolution uses registration order instead."""
+    return {}
 
 
-def _resolve_module_name(module: nn.Module) -> str:
-    """Resolve the fully qualified name for a module via the cached name map."""
-    global _model_name_map
-    if _model_name_map is None:
-        _model_name_map = _build_name_map(module)
-    name = _model_name_map.get(id(module))
-    if name:
-        return name
-    # Fallback: rebuild once in case module tree changed
-    _model_name_map = _build_name_map(module)
-    return _model_name_map.get(id(module), f"unknown_{id(module)}")
+def _resolve_module_name(registration_index: int) -> str:
+    """Resolve name by registration order index."""
+    if registration_index < len(_registration_order_names):
+        return _registration_order_names[registration_index]
+    return f"unknown_{registration_index}"
 
 
 def _write_metadata_sidecar():
@@ -245,22 +260,26 @@ def create_activation_hook(config: dict[str, Any] | None = None) -> Callable:
         flush_interval: float — seconds between shared memory flushes (default: 0.1)
         max_layers: int — maximum number of layers to track (default: 1024)
     """
-    global _writer, _flusher, _layer_counter, _meta_path, _model_name_map
+    global _writer, _flusher, _layer_counter, _meta_path, _registration_order_names
 
     config = config or {}
     shm_path = config.get("shm_path", DEFAULT_SHM_PATH)
     _meta_path = config.get("meta_path", DEFAULT_META_PATH)
     flush_interval = config.get("flush_interval", 0.1)
     max_layers = config.get("max_layers", MAX_LAYERS)
+    num_transformer_layers = config.get("num_layers", 64)
 
     logger.info("AI Cog Map: hook factory called, shm_path=%s, meta_path=%s", shm_path, _meta_path)
+
+    _registration_order_names = _build_expected_names(num_transformer_layers)
+    logger.info("AI Cog Map: expected %d hook registrations for %d transformer layers",
+                len(_registration_order_names), num_transformer_layers)
 
     _writer = ActivationWriter(shm_path, max_layers)
     _flusher = ActivationFlusher(_writer, flush_interval)
     _flusher.start()
 
     _layer_counter = 0
-    _model_name_map = None
 
     def hook_fn(module: nn.Module, input: Any, output: Any):
         global _layer_counter
@@ -277,7 +296,7 @@ def create_activation_hook(config: dict[str, Any] | None = None) -> Callable:
                 _writer._mm.seek(8)
                 _writer._mm.write(struct.pack("<I", _layer_counter))
 
-            full_name = _resolve_module_name(module)
+            full_name = _resolve_module_name(idx)
             layer_idx, comp_type, comp_cat = _classify_module(full_name)
             _module_metadata[mod_id] = {
                 "layer": layer_idx,
