@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Cog Map — Cognitive Visualization</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --bg:       #06060e;
+  --surface:  #0d0d1a;
+  --border:   rgba(139,92,246,0.1);
+  --text:     #e2e8f0;
+  --dim:      #64748b;
+  --muted:    #475569;
+  --purple:   #8b5cf6;
+  --cyan:     #22d3ee;
+  --accent:   #a78bfa;
+  --green:    #34d399;
+  --pink:     #f472b6;
+  --font:     'Space Grotesk', sans-serif;
+  --mono:     'JetBrains Mono', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 24px;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  background: linear-gradient(135deg, var(--accent), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+header .subtitle {
+  font-size: 12px;
+  color: var(--dim);
+  margin-top: 4px;
+  font-family: var(--mono);
+}
+.conn-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--dim);
+  margin-top: 8px;
+}
+.conn-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+}
+.conn-dot.ok { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.conn-dot.off { background: var(--muted); }
+
+/* Stats bar */
+.stats-bar {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+.stat-item { text-align: center; }
+.stat-val {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1;
+}
+.stat-val.v-layers { color: var(--accent); }
+.stat-val.v-active { color: var(--cyan); }
+.stat-val.v-mean   { color: var(--green); }
+.stat-val.v-age    { color: var(--dim); }
+.stat-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* Heatmap */
+.heatmap-container {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px;
+  max-width: 900px;
+  width: 100%;
+}
+.heatmap-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 14px;
+  text-align: center;
+}
+.heatmap-grid {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 16px;
+}
+.hm-cell {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  background: rgba(139,92,246,0.03);
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+
+/* Glow levels — purple to cyan gradient based on activation intensity */
+.hm-cell.g1  { background: rgba(139,92,246,0.08); }
+.hm-cell.g2  { background: rgba(139,92,246,0.16); }
+.hm-cell.g3  { background: rgba(139,92,246,0.28); box-shadow: 0 0 3px rgba(139,92,246,0.15); }
+.hm-cell.g4  { background: rgba(167,139,250,0.38); box-shadow: 0 0 4px rgba(167,139,250,0.2); }
+.hm-cell.g5  { background: rgba(167,139,250,0.50); box-shadow: 0 0 6px rgba(167,139,250,0.25); }
+.hm-cell.g6  { background: rgba(96,165,250,0.5); box-shadow: 0 0 8px rgba(96,165,250,0.3); }
+.hm-cell.g7  { background: rgba(34,211,238,0.5); box-shadow: 0 0 8px rgba(34,211,238,0.3); }
+.hm-cell.g8  { background: rgba(34,211,238,0.65); box-shadow: 0 0 10px rgba(34,211,238,0.4); }
+.hm-cell.g9  { background: rgba(34,211,238,0.8); box-shadow: 0 0 14px rgba(34,211,238,0.5); }
+.hm-cell.g10 { background: rgba(34,211,238,0.95); box-shadow: 0 0 18px rgba(34,211,238,0.6); }
+
+/* Layer axis labels */
+.heatmap-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  font-family: var(--mono);
+  color: var(--muted);
+  padding: 0 2px;
+}
+
+/* Delta bar (change intensity) */
+.delta-section {
+  margin-top: 20px;
+}
+.delta-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  text-align: center;
+}
+.delta-bar {
+  display: flex;
+  gap: 1px;
+  height: 24px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.delta-cell {
+  flex: 1;
+  background: rgba(244,114,182,0.03);
+  transition: background 0.4s;
+}
+.delta-cell.d1 { background: rgba(244,114,182,0.1); }
+.delta-cell.d2 { background: rgba(244,114,182,0.2); }
+.delta-cell.d3 { background: rgba(244,114,182,0.35); }
+.delta-cell.d4 { background: rgba(244,114,182,0.5); }
+.delta-cell.d5 { background: rgba(244,114,182,0.7); box-shadow: inset 0 0 6px rgba(244,114,182,0.3); }
+
+/* No data state */
+.no-data {
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+  padding: 40px 0;
+  font-size: 14px;
+}
+
+footer {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AI Cog Map</h1>
+  <div class="subtitle">AI Model Cognitive Mapping Tool</div>
+  <div class="conn-status">
+    <span class="conn-dot off" id="conn-dot"></span>
+    <span id="conn-text">connecting...</span>
+  </div>
+</header>
+
+<div class="stats-bar" id="stats-bar"></div>
+
+<div class="heatmap-container">
+  <div class="heatmap-title">Layer Activation Map</div>
+  <div class="heatmap-grid" id="heatmap-grid"></div>
+  <div class="heatmap-axis" id="heatmap-axis"></div>
+  <div class="delta-section">
+    <div class="delta-title">Activation Change (delta)</div>
+    <div class="delta-bar" id="delta-bar"></div>
+  </div>
+</div>
+
+<footer>
+  <a href="https://github.com/openhelper/ai-cog-map">AI Cog Map</a> v0.1.0 — Real-time transformer layer activation visualization
+</footer>
+
+<script>
+const $ = sel => document.querySelector(sel);
+let prevNorms = null;
+let cellDecay = {};
+
+function computeGridCols(numLayers) {
+  if (numLayers <= 16) return numLayers;
+  if (numLayers <= 32) return 16;
+  if (numLayers <= 64) return 16;
+  if (numLayers <= 128) return 16;
+  return 16;
+}
+
+function normToLevel(n) {
+  if (n < 0.02) return 0;
+  if (n < 0.08) return 1;
+  if (n < 0.15) return 2;
+  if (n < 0.25) return 3;
+  if (n < 0.35) return 4;
+  if (n < 0.45) return 5;
+  if (n < 0.55) return 6;
+  if (n < 0.65) return 7;
+  if (n < 0.80) return 8;
+  if (n < 0.92) return 9;
+  return 10;
+}
+
+function deltaToLevel(d) {
+  if (d < 0.05) return 0;
+  if (d < 0.15) return 1;
+  if (d < 0.30) return 2;
+  if (d < 0.55) return 3;
+  if (d < 0.80) return 4;
+  return 5;
+}
+
+function renderGrid(norms, deltas) {
+  const grid = $('#heatmap-grid');
+  const deltaBar = $('#delta-bar');
+  const axis = $('#heatmap-axis');
+  const n = norms.length;
+
+  if (n === 0) {
+    grid.innerHTML = '<div class="no-data">Waiting for activation data...</div>';
+    deltaBar.innerHTML = '';
+    axis.innerHTML = '';
+    return;
+  }
+
+  const cols = computeGridCols(n);
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+  // Build or update cells
+  if (grid.children.length !== n || grid.querySelector('.no-data')) {
+    let html = '';
+    for (let i = 0; i < n; i++) {
+      html += `<div class="hm-cell" data-idx="${i}" title="Layer ${i}"></div>`;
+    }
+    grid.innerHTML = html;
+  }
+
+  const cells = grid.querySelectorAll('.hm-cell');
+  for (let i = 0; i < n; i++) {
+    // Blend current norm with decay for smoother transitions
+    const key = 'L' + i;
+    const prev = cellDecay[key] || 0;
+    const target = norms[i];
+    const blended = prev * 0.3 + target * 0.7;
+    cellDecay[key] = blended;
+
+    const level = normToLevel(blended);
+    cells[i].className = 'hm-cell' + (level > 0 ? ' g' + level : '');
+  }
+
+  // Delta bar
+  if (deltas.length === n) {
+    if (deltaBar.children.length !== n) {
+      let dHtml = '';
+      for (let i = 0; i < n; i++) {
+        dHtml += `<div class="delta-cell" title="Layer ${i} delta"></div>`;
+      }
+      deltaBar.innerHTML = dHtml;
+    }
+    const dCells = deltaBar.querySelectorAll('.delta-cell');
+    for (let i = 0; i < n; i++) {
+      const dl = deltaToLevel(deltas[i]);
+      dCells[i].className = 'delta-cell' + (dl > 0 ? ' d' + dl : '');
+    }
+  }
+
+  // Axis
+  if (axis.children.length === 0) {
+    axis.innerHTML = `<span>Layer 0</span><span>Layer ${Math.floor(n/4)}</span><span>Layer ${Math.floor(n/2)}</span><span>Layer ${Math.floor(3*n/4)}</span><span>Layer ${n-1}</span>`;
+  }
+}
+
+function renderStats(data) {
+  const bar = $('#stats-bar');
+  const n = data.num_layers;
+  const active = data.history && data.history.length ? data.history[data.history.length - 1].active_layers : 0;
+  const mean = data.history && data.history.length ? (data.history[data.history.length - 1].mean_norm * 100).toFixed(1) : '0';
+
+  bar.innerHTML = [
+    `<div class="stat-item"><div class="stat-val v-layers">${n}</div><div class="stat-label">Layers</div></div>`,
+    `<div class="stat-item"><div class="stat-val v-active">${active}</div><div class="stat-label">Active</div></div>`,
+    `<div class="stat-item"><div class="stat-val v-mean">${mean}%</div><div class="stat-label">Mean</div></div>`,
+    `<div class="stat-item"><div class="stat-val v-age">${data.age_s || '—'}s</div><div class="stat-label">Age</div></div>`,
+  ].join('');
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/api/activations');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+
+    if (data.status === 'ok' && data.norms && data.norms.length > 0) {
+      renderGrid(data.norms, data.deltas || []);
+      renderStats(data);
+      $('#conn-dot').className = 'conn-dot ok';
+      $('#conn-text').textContent = data.num_layers + ' layers connected';
+    } else {
+      renderGrid([], []);
+      $('#conn-dot').className = 'conn-dot off';
+      $('#conn-text').textContent = 'waiting for model...';
+    }
+  } catch (e) {
+    $('#conn-dot').className = 'conn-dot off';
+    $('#conn-text').textContent = 'disconnected';
+  }
+}
+
+setInterval(poll, 500);
+poll();
+</script>
+</body>
+</html>

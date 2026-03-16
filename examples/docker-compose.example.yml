@@ -1,0 +1,50 @@
+# Example: Running SGLang with AI Cog Map hooks enabled
+#
+# 1. pip install aicogmap (on the host or in the container)
+# 2. Start SGLang with --forward-hooks pointing to the hook config
+# 3. Run the aicogmap visualization server
+
+version: "3.8"
+
+services:
+  sglang:
+    image: lmsysorg/sglang:latest
+    container_name: sglang-with-cogmap
+    ports:
+      - "8000:8000"
+    command:
+      - python3
+      - -m
+      - sglang.launch_server
+      - --model-path
+      - Qwen/Qwen3.5-27B
+      - --dtype
+      - bfloat16
+      - --port
+      - "8000"
+      - --forward-hooks
+      - '[{"name":"aicogmap","target_modules":["model.layers.*"],"hook_factory":"aicogmap.hook:create_activation_hook","config":{"shm_path":"/dev/shm/aicogmap-activations"}}]'
+    volumes:
+      # Mount shared memory so the visualization server can read activations
+      - /dev/shm:/dev/shm
+      # Mount aicogmap package into the container
+      - ./aicogmap:/usr/local/lib/python3.12/dist-packages/aicogmap
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  cogmap-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aicogmap-ui
+    ports:
+      - "7890:7890"
+    volumes:
+      - /dev/shm:/dev/shm:ro
+    depends_on:
+      - sglang

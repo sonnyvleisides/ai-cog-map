@@ -1,0 +1,12 @@
+[
+  {
+    "name": "aicogmap",
+    "target_modules": ["model.layers.*"],
+    "hook_factory": "aicogmap.hook:create_activation_hook",
+    "config": {
+      "shm_path": "/dev/shm/aicogmap-activations",
+      "flush_interval": 0.1,
+      "max_layers": 256
+    }
+  }
+]
