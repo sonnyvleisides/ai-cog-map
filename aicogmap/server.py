@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from aicogmap.hook import DEFAULT_SHM_PATH, read_activations
+from aicogmap.reader import DEFAULT_SHM_PATH, read_activations
 
 logging.basicConfig(
     level=logging.INFO,

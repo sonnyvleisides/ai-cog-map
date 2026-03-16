@@ -17,12 +17,14 @@ Different types of work create different visual signatures. Code generation acti
 ## Architecture
 
 ```
-┌─────────────────┐       shared memory       ┌──────────────────┐
-│  SGLang Server   │  ──────────────────────>  │  AI Cog Map UI   │
-│                  │  /dev/shm/aicogmap-*      │                  │
-│  + forward hooks │                           │  FastAPI + HTML   │
-│  (aicogmap.hook) │                           │  localhost:7890   │
-└─────────────────┘                            └──────────────────┘
+┌────────────────────┐      shared memory      ┌────────────────────┐
+│                    │                         │                    │
+│   SGLang Server    │  ────────────────────>  │   AI Cog Map UI    │
+│                    │  /dev/shm/aicogmap-*    │                    │
+│  + forward hooks   │                         │  FastAPI + HTML    │
+│  (aicogmap.hook)   │                         │  localhost:7890    │
+│                    │                         │                    │
+└────────────────────┘                         └────────────────────┘
 ```
 
 **Hook Plugin** (`aicogmap.hook`): A SGLang forward hook factory. Attaches to every transformer layer via SGLang's native `--forward-hooks` system. On each forward pass, computes the L2 norm of each layer's output tensor and writes to a shared memory buffer. No SGLang source modification required.
